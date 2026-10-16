@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="EBSSTask.API/EBSSTask.API.csproj" />
+  <Project Path="EBSSTask.Application/EBSSTask.Application.csproj" />
+  <Project Path="EBSSTask.Domain/EBSSTask.Domain.csproj" />
+  <Project Path="EBSSTask.Infrastructure/EBSSTask.Infrastructure.csproj" />
+</Solution>
