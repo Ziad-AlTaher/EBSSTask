@@ -1,5 +1,6 @@
 using EBSSTask.Application.Common;
 using EBSSTask.Application.Common.Interfaces;
+using EBSSTask.Application.Common.Queries;
 using EBSSTask.Application.DTOs.BalanceHistory;
 using EBSSTask.Application.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -17,40 +18,9 @@ public class BalanceHistoryService : IBalanceHistoryService
 
     public async Task<PagedResult<BalanceHistoryDto>> GetBalanceHistoriesAsync(BalanceHistoryQueryParameters parameters, CancellationToken cancellationToken = default)
     {
-        var query = _context.BalanceHistories.AsNoTracking().AsQueryable();
-
-        // Filter by specific BalanceId if provided
-        if (parameters.BalanceId.HasValue)
-        {
-            query = query.Where(h => h.BalanceId == parameters.BalanceId.Value);
-        }
-
-        // Filter by date range if provided
-        if (parameters.FromDate.HasValue)
-        {
-            query = query.Where(h => h.Date >= parameters.FromDate.Value);
-        }
-
-        if (parameters.ToDate.HasValue)
-        {
-            query = query.Where(h => h.Date <= parameters.ToDate.Value);
-        }
-
-        // Filter by search term
-        if (!string.IsNullOrWhiteSpace(parameters.Search))
-        {
-            var search = parameters.Search.Trim();
-
-            query = query.Where(h =>
-                (h.Remarks != null && h.Remarks.Contains(search)) ||
-                (h.OrderBill != null && h.OrderBill.Contains(search)) ||
-                (h.ReferenceNo != null && h.ReferenceNo.Contains(search)) ||
-                (h.Kind != null && h.Kind.Contains(search)) ||
-                (h.RequestNo.HasValue && h.RequestNo.Value.ToString().Contains(search)) ||
-                (h.BalanceId.HasValue && h.BalanceId.Value.ToString().Contains(search)) ||
-                h.BalanceHisId.ToString() == search
-            );
-        }
+        var query = _context.BalanceHistories
+            .AsNoTracking()
+            .ApplyFilter(parameters.BalanceId, parameters.FromDate, parameters.ToDate);
 
         var totalCount = await query.CountAsync(cancellationToken);
 

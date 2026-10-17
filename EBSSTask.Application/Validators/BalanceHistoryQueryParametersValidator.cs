@@ -15,11 +15,6 @@ public class BalanceHistoryQueryParametersValidator : AbstractValidator<BalanceH
             .InclusiveBetween(1, 100)
             .WithMessage("PageSize must be between 1 and 100.");
 
-        RuleFor(x => x.Search)
-            .MaximumLength(100)
-            .WithMessage("Search query must not exceed 100 characters.")
-            .When(x => !string.IsNullOrEmpty(x.Search));
-
         RuleFor(x => x.BalanceId)
             .GreaterThan(0)
             .WithMessage("BalanceId must be greater than 0.")

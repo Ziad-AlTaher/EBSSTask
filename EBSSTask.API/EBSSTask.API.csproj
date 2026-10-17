@@ -20,6 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Remove="wwwroot\reports\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\EBSSTask.Application\EBSSTask.Application.csproj" />
     <ProjectReference Include="..\EBSSTask.Infrastructure\EBSSTask.Infrastructure.csproj" />
   </ItemGroup>

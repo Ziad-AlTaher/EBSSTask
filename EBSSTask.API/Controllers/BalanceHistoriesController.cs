@@ -17,7 +17,7 @@ public class BalanceHistoriesController : ControllerBase
     }
 
     /// <summary>
-    /// Gets a paginated list of Balance Histories with optional search, balance, and date filters.
+    /// Gets a paginated list of Balance Histories with optional balance and date filters.
     /// </summary>
     /// <param name="parameters">Pagination and filter parameters</param>
     /// <param name="cancellationToken">Cancellation token</param>

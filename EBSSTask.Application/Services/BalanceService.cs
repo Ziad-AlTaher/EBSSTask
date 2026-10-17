@@ -1,5 +1,6 @@
 using EBSSTask.Application.Common;
 using EBSSTask.Application.Common.Interfaces;
+using EBSSTask.Application.Common.Queries;
 using EBSSTask.Application.DTOs.Balance;
 using EBSSTask.Application.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -17,18 +18,9 @@ public class BalanceService : IBalanceService
 
     public async Task<PagedResult<BalanceDto>> GetBalancesAsync(BalanceQueryParameters parameters, CancellationToken cancellationToken = default)
     {
-        var query = _context.Balances.AsNoTracking().AsQueryable();
-
-        if (!string.IsNullOrWhiteSpace(parameters.Search))
-        {
-            var search = parameters.Search.Trim();
-
-            query = query.Where(b =>
-                (b.BalanceName != null && b.BalanceName.Contains(search)) ||
-                (b.BalanceNameEn != null && b.BalanceNameEn.Contains(search)) ||
-                b.BalanceId.ToString() == search
-            );
-        }
+        var query = _context.Balances
+            .AsNoTracking()
+            .ApplySearch(parameters.Search);
 
         var totalCount = await query.CountAsync(cancellationToken);
 

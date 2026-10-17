@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using EBSSTask.Application.Common.Interfaces;
+using EBSSTask.Application.Reports.Models;
 using EBSSTask.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,6 +22,8 @@ public partial class EliteDbContext : DbContext, IApplicationDbContext
     public virtual DbSet<Balance> Balances { get; set; }
 
     public virtual DbSet<BalanceHistory> BalanceHistories { get; set; }
+
+    public virtual DbSet<FileProcess> FileProcesses { get; set; }
 
 
 
@@ -143,7 +147,82 @@ public partial class EliteDbContext : DbContext, IApplicationDbContext
             entity.Property(e => e.RequestNo).HasColumnName("Request_NO");
         });
 
+        modelBuilder.Entity<FileProcess>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("FileProcess");
+            entity.Property(e => e.ProcessStatus).HasConversion<int>();
+            entity.Property(e => e.ReportType).HasConversion<int>();
+            entity.Property(e => e.ReportFormat).HasConversion<int>();
+            entity.Property(e => e.FilePath).HasMaxLength(500);
+            entity.Property(e => e.UserId).HasMaxLength(100);
+            entity.Property(e => e.ConnectionId).HasMaxLength(100);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(FileProcess.MaxErrorMessageLength);
+        });
+
         OnModelCreatingPartial(modelBuilder);
+    }
+
+    public async Task<ReportSummaryData> GetBalanceHistorySummaryAsync(
+        int? balanceId,
+        DateTime? fromDate,
+        DateTime? toDate,
+        CancellationToken cancellationToken = default)
+    {
+        var conn = Database.GetDbConnection();
+        var wasClosed = conn.State != ConnectionState.Open;
+        if (wasClosed)
+        {
+            await conn.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "dbo.sp_GetBalanceHistorySummary";
+            cmd.CommandType = CommandType.StoredProcedure;
+            cmd.CommandTimeout = 120;
+
+            var pBalanceId = cmd.CreateParameter();
+            pBalanceId.ParameterName = "@BalanceId";
+            pBalanceId.Value = (object?)balanceId ?? DBNull.Value;
+            cmd.Parameters.Add(pBalanceId);
+
+            var pFromDate = cmd.CreateParameter();
+            pFromDate.ParameterName = "@FromDate";
+            pFromDate.Value = (object?)fromDate ?? DBNull.Value;
+            cmd.Parameters.Add(pFromDate);
+
+            var pToDate = cmd.CreateParameter();
+            pToDate.ParameterName = "@ToDate";
+            pToDate.Value = (object?)toDate ?? DBNull.Value;
+            cmd.Parameters.Add(pToDate);
+
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                return new ReportSummaryData
+                {
+                    TotalRecords = reader.GetInt32(reader.GetOrdinal("TotalRecords")),
+                    FirstPreviousBalance = reader.GetDecimal(reader.GetOrdinal("FirstPreviousBalance")),
+                    TotalDebits = reader.GetDecimal(reader.GetOrdinal("TotalDebits")),
+                    TotalCredits = reader.GetDecimal(reader.GetOrdinal("TotalCredits")),
+                    FinalBalance = reader.GetDecimal(reader.GetOrdinal("FinalBalance")),
+                    TotalPreviousBalances = reader.GetDecimal(reader.GetOrdinal("TotalPreviousBalances")),
+                    TotalFinalBalances = reader.GetDecimal(reader.GetOrdinal("TotalFinalBalances")),
+                    AccountType = reader.IsDBNull(reader.GetOrdinal("AccountType")) ? "D" : reader.GetString(reader.GetOrdinal("AccountType"))
+                };
+            }
+
+            return new ReportSummaryData();
+        }
+        finally
+        {
+            if (wasClosed)
+            {
+                await conn.CloseAsync();
+            }
+        }
     }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);

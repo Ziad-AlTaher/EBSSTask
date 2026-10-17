@@ -1,6 +1,15 @@
+using EBSSTask.API.Hubs;
+using EBSSTask.API.Services;
 using EBSSTask.Application;
+using EBSSTask.Application.Common.Options;
+using EBSSTask.Application.Reports.Interfaces;
 using EBSSTask.Infrastructure;
 using FluentValidation.AspNetCore;
+using QuestPDF.Infrastructure;
+
+// Configure QuestPDF license and fonts at startup
+QuestPDF.Settings.License = LicenseType.Community;
+QuestPDF.Settings.UseSystemFonts = true;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,9 +19,17 @@ builder.Services.AddControllers();
 // FluentValidation automatic model validation
 builder.Services.AddFluentValidationAutoValidation();
 
+// Bind Report Generation options
+builder.Services.Configure<ReportGenerationOptions>(
+    builder.Configuration.GetSection(ReportGenerationOptions.SectionName));
+
 // Clean Architecture Services
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
+
+// SignalR Real-Time Notifications
+builder.Services.AddSignalR();
+builder.Services.AddScoped<IReportNotificationService, SignalRReportNotificationService>();
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -32,5 +49,6 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<ReportHub>(ReportHub.HubUrl);
 
 app.Run();
