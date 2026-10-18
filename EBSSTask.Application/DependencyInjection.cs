@@ -24,6 +24,7 @@ public static class DependencyInjection
         // Report Format Writers
         services.AddSingleton<IReportWriter, ClosedXmlReportWriter>();
         services.AddSingleton<IReportWriter, QuestPdfReportWriter>();
+        services.AddSingleton<IDirectExportService, DirectExportService>();
 
         // Report Orchestration & Processing
         services.AddScoped<IReportService, ReportService>();

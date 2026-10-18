@@ -1,0 +1,654 @@
+<!-- Modern EBSS Account Statement Application (Pixel-Perfect Restyle) -->
+<div class="app-page-wrapper">
+
+  <!-- Top Global Loading Progress Bar (Interceptors + Printing + Exporting) -->
+  @if (loadingService.isLoading() || isGeneratingPdf() || isGeneratingExcel()) {
+    <mat-progress-bar mode="indeterminate" class="global-app-loading-bar"></mat-progress-bar>
+  }
+
+  <!-- Slim White Top Bar -->
+  <header class="top-bar">
+    <div class="top-bar-container">
+      <div class="brand-group">
+        <div class="brand-logo-tile">
+          <mat-icon>receipt</mat-icon>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">EBSS Account Statement</h1>
+          <span class="brand-subtitle">Financial Operations and Reports</span>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <!-- Generated Files Button -->
+        <button type="button" class="btn-generated-files" (click)="openFilesDialog()" matTooltip="View generated files and history">
+          <mat-icon class="action-icon">folder_open</mat-icon>
+          <span>Generated Files</span>
+          <span class="count-badge">{{ generatedFilesCount() }}</span>
+        </button>
+
+        <!-- Test Account Pill Chip -->
+        <div class="account-pill-chip" (click)="loadTestAccount()" role="button" tabindex="0" matTooltip="Quick load Clients Class A (11038)">
+          <span class="avatar-initials">TA</span>
+          <span class="chip-label">Test Account (11038)</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Centered Content Area (Max 1280px) -->
+  <main class="main-content-layout">
+
+    <!-- 1. Account & Filters Card -->
+    <section class="card-container filter-card">
+
+      <!-- Selected Account Header Strip -->
+      <div class="selected-account-row">
+        <div class="selected-account-left">
+          <div class="account-icon-box">
+            <mat-icon>store</mat-icon>
+          </div>
+          <div class="account-info-text">
+            <span class="selected-label">Selected account</span>
+            <h2 class="selected-account-name">
+              {{ selectedAccount()?.balanceName || 'Clients Class A' }}
+            </h2>
+          </div>
+        </div>
+
+        <div class="selected-account-badges">
+          <span class="pill-meta-badge">ID {{ selectedAccount()?.balanceId ?? 11038 }}</span>
+          <span class="pill-meta-badge">Code {{ selectedAccount()?.parentCode || selectedAccount()?.balanceId || 11038 }}</span>
+          <span class="pill-meta-badge badge-type" [class.type-credit]="selectedAccount()?.balanceType === 'C'" [class.type-debit]="selectedAccount()?.balanceType !== 'C'">
+            {{ selectedAccount()?.balanceType === 'C' ? 'Credit (دائن)' : 'Debit (مدين)' }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Filter Form Fields Row -->
+      <div class="filter-inputs-grid">
+
+        <!-- Account Autocomplete Field -->
+        <div class="form-field-wrapper field-account">
+          <label class="input-above-label">Account (Code - Name)</label>
+          <div class="input-container">
+            <input
+              type="text"
+              class="form-input"
+              [formControl]="accountControl"
+              [matAutocomplete]="auto"
+              placeholder="(11038 - Clients Class A)"
+            />
+            @if (isSearchingAccounts()) {
+              <mat-progress-spinner diameter="18" mode="indeterminate" class="field-spinner"></mat-progress-spinner>
+            } @else if (accountControl.value) {
+              <button type="button" class="field-clear-btn" (click)="clearAccount()" matTooltip="Clear selection">
+                <mat-icon>close</mat-icon>
+              </button>
+            }
+
+            <mat-autocomplete
+              #auto="matAutocomplete"
+              [displayWith]="displayAccountFn"
+              (optionSelected)="onAccountSelected($event)"
+              (opened)="onAutocompleteOpened()"
+            >
+              @for (account of filteredAccounts(); track account.balanceId) {
+                <mat-option [value]="account">
+                  <div class="account-option-row">
+                    <span class="option-concatenated">
+                      ({{ (account.parentCode || account.balanceId) }} - {{ account.balanceName }})
+                    </span>
+                    <span class="option-type" [class.credit]="account.balanceType === 'C'">
+                      {{ account.balanceType === 'C' ? 'Credit' : 'Debit' }}
+                    </span>
+                  </div>
+                </mat-option>
+              }
+
+              @if (hasMoreAccounts()) {
+                <mat-option [disabled]="isLoadingMoreAccounts()" (click)="$event.stopPropagation(); loadMoreAccounts()" class="load-more-opt">
+                  <div class="load-more-box">
+                    @if (isLoadingMoreAccounts()) {
+                      <mat-progress-spinner diameter="16" mode="indeterminate"></mat-progress-spinner>
+                      <span>Loading more...</span>
+                    } @else {
+                      <mat-icon>expand_more</mat-icon>
+                      <span>Load more accounts...</span>
+                    }
+                  </div>
+                </mat-option>
+              }
+            </mat-autocomplete>
+          </div>
+        </div>
+
+        <!-- From Date Field -->
+        <div class="form-field-wrapper field-date">
+          <label class="input-above-label">From Date</label>
+          <div class="input-container">
+            <input
+              class="form-input"
+              [matDatepicker]="fromPicker"
+              [formControl]="fromDateControl"
+              placeholder="mm/dd/yyyy"
+            />
+            <mat-datepicker-toggle [for]="fromPicker" class="picker-toggle-btn"></mat-datepicker-toggle>
+            <mat-datepicker #fromPicker></mat-datepicker>
+          </div>
+        </div>
+
+        <!-- To Date Field -->
+        <div class="form-field-wrapper field-date">
+          <label class="input-above-label">To Date</label>
+          <div class="input-container">
+            <input
+              class="form-input"
+              [matDatepicker]="toPicker"
+              [formControl]="toDateControl"
+              placeholder="mm/dd/yyyy"
+            />
+            <mat-datepicker-toggle [for]="toPicker" class="picker-toggle-btn"></mat-datepicker-toggle>
+            <mat-datepicker #toPicker></mat-datepicker>
+          </div>
+        </div>
+
+        <!-- Search Button -->
+        <div class="form-field-wrapper field-search-action">
+          <label class="input-above-label opacity-0" aria-hidden="true">Action</label>
+          <button type="button" class="btn-primary-search" (click)="onSearch()" [disabled]="isLoadingStatement() || isLoadingChunk()">
+            @if (isLoadingStatement() || isLoadingChunk()) {
+              <mat-progress-spinner diameter="18" mode="indeterminate" class="search-spinner"></mat-progress-spinner>
+            } @else {
+              <mat-icon>search</mat-icon>
+            }
+            <span>Search</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Quick Range & Export Row -->
+      <div class="ranges-and-exports-row">
+        <!-- Quick Range Pills on the left -->
+        <div class="quick-range-wrapper">
+          <span class="quick-range-title">Quick range</span>
+          <div class="quick-pills-list">
+            <button
+              type="button"
+              class="range-pill"
+              [class.active]="selectedQuickRange() === 'last-month'"
+              (click)="setLastMonth()"
+            >
+              Last month
+            </button>
+
+            <button
+              type="button"
+              class="range-pill"
+              [class.active]="selectedQuickRange() === 'last-3-months'"
+              (click)="setLastThreeMonths()"
+            >
+              Last 3 months
+            </button>
+
+            <button
+              type="button"
+              class="range-pill"
+              [class.active]="selectedQuickRange() === 'current-year'"
+              (click)="setCurrentYear()"
+            >
+              Current year
+            </button>
+
+            <button
+              type="button"
+              class="range-pill"
+              [class.active]="selectedQuickRange() === 'since-2000'"
+              (click)="setSince2000()"
+            >
+              Since 2000
+            </button>
+          </div>
+        </div>
+
+        <!-- Print & Excel Export Buttons on the right -->
+        <div class="export-actions-wrapper">
+          <span class="export-scope-label">Export all time span statement:</span>
+
+          <!-- Print (PDF) Button -->
+          <button
+            type="button"
+            class="btn-export-pdf"
+            (click)="onPrintPdf()"
+            [disabled]="isGeneratingPdf() || isGeneratingExcel()"
+            [matTooltip]="(isGeneratingPdf() || isGeneratingExcel()) ? 'A report generation process is in progress. Please wait...' : 'Export statement as PDF'"
+          >
+            @if (isGeneratingPdf()) {
+              <mat-progress-spinner diameter="16" mode="indeterminate" class="btn-loader"></mat-progress-spinner>
+            } @else {
+              <span class="tag-pdf">PDF</span>
+            }
+            <span class="btn-text">{{ isGeneratingPdf() ? 'Generating...' : 'Print (PDF)' }}</span>
+          </button>
+
+          <!-- Excel Button -->
+          <button
+            type="button"
+            class="btn-export-excel"
+            (click)="onExportExcel()"
+            [disabled]="isGeneratingExcel() || isGeneratingPdf()"
+            [matTooltip]="(isGeneratingPdf() || isGeneratingExcel()) ? 'A report generation process is in progress. Please wait...' : 'Export statement as Excel spreadsheet'"
+          >
+            @if (isGeneratingExcel()) {
+              <mat-progress-spinner diameter="16" mode="indeterminate" class="btn-loader"></mat-progress-spinner>
+            } @else {
+              <span class="tag-xls">XLS</span>
+            }
+            <span class="btn-text">{{ isGeneratingExcel() ? 'Generating...' : 'Excel' }}</span>
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 2. Balance Summary Row (With Formula Operators: + − =) -->
+    <section class="summary-cards-section">
+      <!-- 1. First Previous Balance -->
+      <div class="summary-card card-first-prev">
+        <span class="summary-card-label">First Previous Balance</span>
+        <span class="summary-card-value font-mono">{{ firstPreviousBalance() | number:'1.2-2' }}</span>
+      </div>
+
+      <!-- Operator: + -->
+      <div class="summary-operator-cell"></div>
+
+      <!-- 2. Total Debits (Blue with Downward Arrow) -->
+      <div class="summary-card card-total-debits">
+        <span class="summary-card-label label-debits">
+          <mat-icon class="arrow-indicator debits-arrow">arrow_downward</mat-icon>
+          Total Debits
+        </span>
+        <span class="summary-card-value value-debits font-mono">{{ totalDebits() | number:'1.2-2' }}</span>
+      </div>
+
+      <!-- Operator: − -->
+      <div class="summary-operator-cell"></div>
+
+      <!-- 3. Total Credits (Orange with Upward Arrow) -->
+      <div class="summary-card card-total-credits">
+        <span class="summary-card-label label-credits">
+          <mat-icon class="arrow-indicator credits-arrow">arrow_upward</mat-icon>
+          Total Credits
+        </span>
+        <span class="summary-card-value value-credits font-mono">{{ totalCredits() | number:'1.2-2' }}</span>
+      </div>
+
+      <!-- Operator: = -->
+      <div class="summary-operator-cell"></div>
+
+      <!-- 4. Final Balance (Dark Navy Highlighted Card) -->
+      <div class="summary-card card-final-balance dark-navy-card">
+        <span class="summary-card-label label-final-dark">Final Balance (Account)</span>
+        <span class="summary-card-value value-final-dark font-mono">{{ finalBalance() | number:'1.2-2' }}</span>
+      </div>
+    </section>
+
+    <!-- 3. Transactions Table Card (Tabbed: Paginated Grid vs Infinite Scroll) -->
+    <section class="card-container table-card">
+
+      <!-- View Switcher Tabs Bar -->
+      <div class="view-mode-tabs-bar">
+        <div class="tabs-nav-group">
+          <button
+            type="button"
+            class="mode-tab-btn"
+            [class.active]="activeViewMode() === 'grid'"
+            (click)="switchViewMode('grid')"
+          >
+            <mat-icon>table_chart</mat-icon>
+            <span>Standard Paginated Grid</span>
+            @if (activeViewMode() === 'grid' && totalStatementCount() > 0) {
+              <span class="tab-badge">{{ totalStatementCount() | number }}</span>
+            }
+          </button>
+
+          <button
+            type="button"
+            class="mode-tab-btn"
+            [class.active]="activeViewMode() === 'infinite'"
+            (click)="switchViewMode('infinite')"
+          >
+            <mat-icon>all_inclusive</mat-icon>
+            <span>Full Time-Span (Infinite Scroll)</span>
+            @if (activeViewMode() === 'infinite' && totalInfiniteCount() > 0) {
+              <span class="tab-badge">{{ infiniteProjectedRows().length | number }} / {{ totalInfiniteCount() | number }}</span>
+            }
+          </button>
+        </div>
+
+        <div class="tabs-right-status">
+          @if (activeViewMode() === 'infinite') {
+            <!-- <span class="records-count-pill">{{ totalInfiniteCount() | number }} Records</span> -->
+          } @else {
+            <!-- <span class="records-count-pill">{{ totalStatementCount() | number }} Records</span> -->
+          }
+        </div>
+      </div>
+
+      <!-- ================= TAB 1: STANDARD PAGINATED GRID ================= -->
+      @if (activeViewMode() === 'grid') {
+        <!-- Table Header Bar -->
+        <div class="table-header-bar">
+          <div class="table-title-group">
+            <h3 class="table-title-text">Statement Transactions</h3>
+            <span class="page-indicator-sub">Page {{ currentPage() }} ({{ pageSize() }} per page)</span>
+          </div>
+
+          <div class="table-actions-group">
+            <!-- Server-side Search input -->
+            <div class="table-search-box">
+              <mat-icon class="search-icon">search</mat-icon>
+              <input
+                type="text"
+                class="table-search-input"
+                placeholder="Search in table..."
+                [formControl]="gridSearchControl"
+                aria-label="Search transactions"
+              />
+              @if (gridSearchControl.value) {
+                <button type="button" class="search-clear-btn" (click)="clearGridSearch()" matTooltip="Clear search">
+                  <mat-icon>close</mat-icon>
+                </button>
+              }
+            </div>
+
+            <div class="table-export-divider"></div>
+
+            <span class="export-scope-label">Export grid:</span>
+
+            <!-- Direct PDF Export Button (Opens immediately) -->
+            <button
+              type="button"
+              class="btn-direct-export btn-direct-pdf"
+              (click)="onDirectExportPdf()"
+              [disabled]="isDirectExportingPdf() || isDirectExportingExcel() || statementItems().length === 0"
+              [matTooltip]="(isDirectExportingPdf() || isDirectExportingExcel()) ? 'Export in progress, please wait...' : 'Export current page to PDF (opens immediately)'"
+            >
+              @if (isDirectExportingPdf()) {
+                <mat-progress-spinner diameter="14" mode="indeterminate" class="btn-loader"></mat-progress-spinner>
+              } @else {
+                <span class="tag-pdf">PDF</span>
+              }
+              <span class="btn-text">{{ isDirectExportingPdf() ? 'Exporting...' : 'PDF' }}</span>
+            </button>
+
+            <!-- Direct Excel Export Button (Downloads immediately) -->
+            <button
+              type="button"
+              class="btn-direct-export btn-direct-excel"
+              (click)="onDirectExportExcel()"
+              [disabled]="isDirectExportingPdf() || isDirectExportingExcel() || statementItems().length === 0"
+              [matTooltip]="(isDirectExportingPdf() || isDirectExportingExcel()) ? 'Export in progress, please wait...' : 'Export current page to Excel (downloads immediately)'"
+            >
+              @if (isDirectExportingExcel()) {
+                <mat-progress-spinner diameter="14" mode="indeterminate" class="btn-loader"></mat-progress-spinner>
+              } @else {
+                <span class="tag-xls">XLS</span>
+              }
+              <span class="btn-text">{{ isDirectExportingExcel() ? 'Exporting...' : 'Excel' }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Linear Loading Indicator -->
+        @if (isLoadingStatement()) {
+          <mat-progress-bar mode="indeterminate" class="table-loader-bar"></mat-progress-bar>
+        }
+
+        <!-- Transactions Material Table -->
+        <div class="table-scroll-wrapper">
+          <table mat-table [dataSource]="statementItems()" class="statement-data-table">
+
+            <!-- 1. Account ID Column -->
+            <ng-container matColumnDef="balanceId">
+              <th mat-header-cell *matHeaderCellDef class="th-cell th-id">ACCOUNT ID</th>
+              <td mat-cell *matCellDef="let row" class="td-cell td-id font-mono">
+                {{ row.balanceId || '-' }}
+              </td>
+              <td mat-footer-cell *matFooterCellDef class="tf-cell tf-label" colspan="2">PAGE TOTALS</td>
+            </ng-container>
+
+            <!-- 2. Account Name Column -->
+            <ng-container matColumnDef="accountName">
+              <th mat-header-cell *matHeaderCellDef class="th-cell th-name">ACCOUNT NAME</th>
+              <td mat-cell *matCellDef="let row" class="td-cell td-name">
+                {{ selectedAccount()?.balanceName || 'Clients Class A' }}
+              </td>
+              <!-- Hidden by colspan="2" of balanceId in footer -->
+              <td mat-footer-cell *matFooterCellDef [style.display]="'none'"></td>
+            </ng-container>
+
+            <!-- 3. Previous Balance Column -->
+            <ng-container matColumnDef="prevBalnce">
+              <th mat-header-cell *matHeaderCellDef class="th-cell th-numeric">PREVIOUS BALANCE</th>
+              <td mat-cell *matCellDef="let row" class="td-cell td-numeric font-mono td-prev">
+                {{ row.prevBalnce | number:'1.2-2' }}
+              </td>
+              <td mat-footer-cell *matFooterCellDef class="tf-cell tf-numeric font-mono"></td>
+            </ng-container>
+
+            <!-- 4. Debit Amount Column -->
+            <ng-container matColumnDef="debtor">
+              <th mat-header-cell *matHeaderCellDef class="th-cell th-numeric">DEBIT AMOUNT</th>
+              <td mat-cell *matCellDef="let row" class="td-cell td-numeric font-mono td-debit">
+                {{ row.debtor > 0 ? (row.debtor | number:'1.2-2') : '–' }}
+              </td>
+              <td mat-footer-cell *matFooterCellDef class="tf-cell tf-numeric font-mono tf-debit">
+                {{ pageSumDebtor() | number:'1.2-2' }}
+              </td>
+            </ng-container>
+
+            <!-- 5. Credit Amount Column -->
+            <ng-container matColumnDef="creditor">
+              <th mat-header-cell *matHeaderCellDef class="th-cell th-numeric">CREDIT AMOUNT</th>
+              <td mat-cell *matCellDef="let row" class="td-cell td-numeric font-mono td-credit">
+                {{ row.creditor > 0 ? (row.creditor | number:'1.2-2') : '–' }}
+              </td>
+              <td mat-footer-cell *matFooterCellDef class="tf-cell tf-numeric font-mono tf-credit">
+                {{ pageSumCreditor() | number:'1.2-2' }}
+              </td>
+            </ng-container>
+
+            <!-- 6. Final Balance Column -->
+            <ng-container matColumnDef="finalBalance">
+              <th mat-header-cell *matHeaderCellDef class="th-cell th-numeric">FINAL BALANCE</th>
+              <td mat-cell *matCellDef="let row" class="td-cell td-numeric font-mono td-final">
+                {{ row.calculatedFinalBalance | number:'1.2-2' }}
+              </td>
+              <td mat-footer-cell *matFooterCellDef class="tf-cell tf-numeric font-mono"></td>
+            </ng-container>
+
+            <!-- 7. Actions Column -->
+            <ng-container matColumnDef="actions">
+              <th mat-header-cell *matHeaderCellDef class="th-cell th-actions">ACTIONS</th>
+              <td mat-cell *matCellDef="let row" class="td-cell td-actions">
+                <button
+                  type="button"
+                  class="btn-row-eye"
+                  (click)="$event.stopPropagation(); viewTransactionDetails(row)"
+                  matTooltip="View transaction details"
+                >
+                  <mat-icon>visibility</mat-icon>
+                </button>
+              </td>
+              <td mat-footer-cell *matFooterCellDef class="tf-cell"></td>
+            </ng-container>
+
+            <!-- Table Header, Body, and Footer Rows -->
+            <tr mat-header-row *matHeaderRowDef="displayedColumns; sticky: true" class="table-header-row"></tr>
+            <tr
+              mat-row
+              *matRowDef="let row; columns: displayedColumns"
+              class="table-body-row"
+              (click)="viewTransactionDetails(row)"
+            ></tr>
+            <tr mat-footer-row *matFooterRowDef="displayedColumns; sticky: true" class="table-footer-row"></tr>
+
+            <!-- Empty State Row -->
+            <tr class="mat-row no-data-row" *matNoDataRow>
+              <td class="mat-cell" colspan="7">
+                <div class="empty-state-box">
+                  <mat-icon class="empty-icon">search_off</mat-icon>
+                  <span class="empty-msg">
+                    {{ hasSearched() ? 'No transactions found for the selected criteria.' : 'Please select an account and click Search to preview statement.' }}
+                  </span>
+                </div>
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        <!-- Material Pagination Bar -->
+        <mat-paginator
+          class="custom-paginator"
+          [length]="totalStatementCount()"
+          [pageSize]="pageSize()"
+          [pageIndex]="currentPage() - 1"
+          [pageSizeOptions]="[10, 12, 25, 50, 100]"
+          (page)="onPageChange($event)"
+          showFirstLastButtons
+          aria-label="Select statement page"
+        >
+        </mat-paginator>
+      }
+
+      <!-- ================= TAB 2: INFINITE SCROLLING (PAGED CHUNKS + DATA PROJECTION) ================= -->
+      @if (activeViewMode() === 'infinite') {
+        <!-- Infinite Header Bar -->
+        <div class="table-header-bar infinite-header-bar">
+          <div class="table-title-group">
+            <h3 class="table-title-text">Continuous Stream Ledger</h3>
+            <span class="stream-stats-chip">
+              Loaded {{ infiniteProjectedRows().length | number }} of {{ totalInfiniteCount() | number }} transactions
+            </span>
+          </div>
+
+          <div class="table-actions-group">
+            <!-- Server-side Search input for infinite stream -->
+            <div class="table-search-box">
+              <mat-icon class="search-icon">search</mat-icon>
+              <input
+                type="text"
+                class="table-search-input"
+                placeholder="Search across stream..."
+                [formControl]="gridSearchControl"
+                aria-label="Search transactions"
+              />
+              @if (gridSearchControl.value) {
+                <button type="button" class="search-clear-btn" (click)="clearGridSearch()" matTooltip="Clear search">
+                  <mat-icon>close</mat-icon>
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+
+        <!-- Virtual Scroll Viewport with Sticky Header & Low-Memory Footprint -->
+        <div class="virtual-scroll-container">
+          <!-- Sticky Header -->
+          <div class="virtual-table-header">
+            <div class="vth-cell vth-date">DATE</div>
+            <div class="vth-cell vth-bill">ORDER / BILL</div>
+            <div class="vth-cell vth-kind">KIND</div>
+            <div class="vth-cell vth-numeric">PREVIOUS BALANCE</div>
+            <div class="vth-cell vth-numeric">DEBIT AMOUNT</div>
+            <div class="vth-cell vth-numeric">CREDIT AMOUNT</div>
+            <div class="vth-cell vth-numeric">FINAL BALANCE</div>
+            <div class="vth-cell vth-actions">ACTIONS</div>
+          </div>
+
+          <!-- CDK Virtual Scroll Viewport -->
+          <cdk-virtual-scroll-viewport
+            itemSize="48"
+            class="virtual-viewport-body"
+            (scrolledIndexChange)="onInfiniteScrollIndexChange($event)"
+          >
+            <div
+              *cdkVirtualFor="let row of infiniteProjectedRows(); trackBy: trackByRowId"
+              class="virtual-table-row"
+              (click)="viewProjectedTransactionDetails(row)"
+            >
+              <div class="vtd-cell vtd-date">
+                {{ row.date ? (row.date | date:'dd/MM/yyyy') : '–' }}
+              </div>
+              <div class="vtd-cell vtd-bill font-mono">
+                {{ row.orderBill || '–' }}
+              </div>
+              <div class="vtd-cell vtd-kind">
+                <span class="kind-tag">{{ row.kind || 'Tx' }}</span>
+              </div>
+              <div class="vtd-cell vtd-numeric font-mono td-prev">
+                {{ row.prev | number:'1.2-2' }}
+              </div>
+              <div class="vtd-cell vtd-numeric font-mono td-debit">
+                {{ row.debit > 0 ? (row.debit | number:'1.2-2') : '–' }}
+              </div>
+              <div class="vtd-cell vtd-numeric font-mono td-credit">
+                {{ row.credit > 0 ? (row.credit | number:'1.2-2') : '–' }}
+              </div>
+              <div class="vtd-cell vtd-numeric font-mono td-final">
+                {{ row.final | number:'1.2-2' }}
+              </div>
+              <div class="vtd-cell vtd-actions">
+                <button
+                  type="button"
+                  class="btn-row-eye"
+                  (click)="$event.stopPropagation(); viewProjectedTransactionDetails(row)"
+                  matTooltip="View transaction details"
+                >
+                  <mat-icon>visibility</mat-icon>
+                </button>
+              </div>
+            </div>
+
+            <!-- Empty State inside Viewport -->
+            @if (infiniteProjectedRows().length === 0 && !isLoadingChunk()) {
+              <div class="virtual-empty-state">
+                <mat-icon class="empty-icon">search_off</mat-icon>
+                <span class="empty-msg">
+                  {{ hasSearched() ? 'No transactions found for the selected account & filter.' : 'Select an account and click Search to start streaming transactions.' }}
+                </span>
+              </div>
+            }
+          </cdk-virtual-scroll-viewport>
+
+          <!-- Bottom Stream Status / Next Chunk Loader -->
+          <div class="infinite-stream-footer">
+            @if (isLoadingChunk()) {
+              <div class="chunk-loader-status">
+                <mat-progress-spinner diameter="18" mode="indeterminate" class="chunk-spinner"></mat-progress-spinner>
+                <span>Fetching next chunk (50 records)...</span>
+              </div>
+            } @else if (hasMoreChunks() && infiniteProjectedRows().length > 0) {
+              <div class="scroll-prompt-status">
+                <mat-icon>arrow_downward</mat-icon>
+                <span>Scroll down to load more transactions seamlessly</span>
+              </div>
+            } @else if (!hasMoreChunks() && infiniteProjectedRows().length > 0) {
+              <div class="all-loaded-status">
+                <mat-icon class="check-icon">check_circle</mat-icon>
+                <span>All {{ totalInfiniteCount() | number }} transactions loaded smoothly</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+    </section>
+
+  </main>
+
+  <!-- Modern Floating Toasts Container -->
+  <app-toast-container></app-toast-container>
+</div>

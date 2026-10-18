@@ -45,4 +45,23 @@ public static class QueryFilterExtensions
 
         return query;
     }
+
+    public static IQueryable<BalanceHistory> ApplySearch(
+        this IQueryable<BalanceHistory> query,
+        string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return query;
+        }
+
+        var term = search.Trim();
+
+        return query.Where(h =>
+            (h.Remarks != null && h.Remarks.Contains(term)) ||
+            (h.ReferenceNo != null && h.ReferenceNo.Contains(term)) ||
+            (h.OrderBill != null && h.OrderBill.Contains(term)) ||
+            h.BalanceHisId.ToString().Contains(term) ||
+            (h.RequestNo != null && h.RequestNo.ToString()!.Contains(term)));
+    }
 }

@@ -3,6 +3,7 @@ using EBSSTask.Application.Common.Interfaces;
 using EBSSTask.Application.Common.Queries;
 using EBSSTask.Application.DTOs.BalanceHistory;
 using EBSSTask.Application.Interfaces;
+using EBSSTask.Application.Reports.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace EBSSTask.Application.Services;
@@ -20,7 +21,8 @@ public class BalanceHistoryService : IBalanceHistoryService
     {
         var query = _context.BalanceHistories
             .AsNoTracking()
-            .ApplyFilter(parameters.BalanceId, parameters.FromDate, parameters.ToDate);
+            .ApplyFilter(parameters.BalanceId, parameters.FromDate, parameters.ToDate)
+            .ApplySearch(parameters.Search);
 
         var totalCount = await query.CountAsync(cancellationToken);
 
@@ -81,5 +83,14 @@ public class BalanceHistoryService : IBalanceHistoryService
                 ReferenceNo = h.ReferenceNo
             })
             .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<ReportSummaryData> GetSummaryAsync(
+        int? balanceId,
+        DateTime? fromDate,
+        DateTime? toDate,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.GetBalanceHistorySummaryAsync(balanceId, fromDate, toDate, cancellationToken);
     }
 }

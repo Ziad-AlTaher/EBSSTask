@@ -1,6 +1,7 @@
 using EBSSTask.Application.Common;
 using EBSSTask.Application.DTOs.BalanceHistory;
 using EBSSTask.Application.Interfaces;
+using EBSSTask.Application.Reports.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EBSSTask.API.Controllers;
@@ -10,10 +11,14 @@ namespace EBSSTask.API.Controllers;
 public class BalanceHistoriesController : ControllerBase
 {
     private readonly IBalanceHistoryService _balanceHistoryService;
+    private readonly IDirectExportService _directExportService;
 
-    public BalanceHistoriesController(IBalanceHistoryService balanceHistoryService)
+    public BalanceHistoriesController(
+        IBalanceHistoryService balanceHistoryService,
+        IDirectExportService directExportService)
     {
         _balanceHistoryService = balanceHistoryService;
+        _directExportService = directExportService;
     }
 
     /// <summary>
@@ -49,5 +54,48 @@ public class BalanceHistoriesController : ControllerBase
         }
 
         return Ok(history);
+    }
+
+    /// <summary>
+    /// Gets summary calculations via Stored Procedure dbo.sp_GetBalanceHistorySummary.
+    /// </summary>
+    [HttpGet("summary")]
+    [ProducesResponseType(typeof(ReportSummaryData), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReportSummaryData>> GetSummary(
+        [FromQuery] int? balanceId,
+        [FromQuery] DateTime? fromDate,
+        [FromQuery] DateTime? toDate,
+        CancellationToken cancellationToken)
+    {
+        var summary = await _balanceHistoryService.GetSummaryAsync(balanceId, fromDate, toDate, cancellationToken);
+        return Ok(summary);
+    }
+
+    /// <summary>
+    /// Direct in-memory synchronous export of the current grid page to PDF.
+    /// Uses the exact same query parameters as GetBalanceHistories.
+    /// </summary>
+    [HttpGet("export-direct/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ExportDirectPdf([FromQuery] BalanceHistoryQueryParameters parameters, CancellationToken cancellationToken)
+    {
+        var result = await _balanceHistoryService.GetBalanceHistoriesAsync(parameters, cancellationToken);
+        var fileBytes = _directExportService.GenerateDirectPdf(result.Items, parameters);
+        var fileName = $"Statement_{DateTime.Now:yyyyMMddHHmmss}.pdf";
+        return File(fileBytes, "application/pdf", fileName);
+    }
+
+    /// <summary>
+    /// Direct in-memory synchronous export of the current grid page to Excel.
+    /// Uses the exact same query parameters as GetBalanceHistories.
+    /// </summary>
+    [HttpGet("export-direct/excel")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ExportDirectExcel([FromQuery] BalanceHistoryQueryParameters parameters, CancellationToken cancellationToken)
+    {
+        var result = await _balanceHistoryService.GetBalanceHistoriesAsync(parameters, cancellationToken);
+        var fileBytes = _directExportService.GenerateDirectExcel(result.Items, parameters);
+        var fileName = $"Statement_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
+        return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
 }

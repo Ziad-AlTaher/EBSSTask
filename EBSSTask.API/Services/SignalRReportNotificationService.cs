@@ -32,16 +32,20 @@ public sealed class SignalRReportNotificationService : IReportNotificationServic
                 .SendAsync("OnFileReady", notification, cancellationToken);
         }
 
-        // 2. Notify specific user if provided
-        if (!string.IsNullOrWhiteSpace(target.UserId))
-        {
-            await _hubContext.Clients.User(target.UserId)
-                .SendAsync("OnFileReady", notification, cancellationToken);
-        }
+        //// 2. Notify specific user if provided
+        //if (!string.IsNullOrWhiteSpace(target.UserId))
+        //{
+        //    await _hubContext.Clients.User(target.UserId)
+        //        .SendAsync("OnFileReady", notification, cancellationToken);
+        //}
 
-        // 3. Notify any clients subscribed to this process group
-        await _hubContext.Clients.Group(notification.ProcessId.ToString())
-            .SendAsync("OnFileReady", notification, cancellationToken);
+        //// 3. Notify any clients subscribed to this process group
+        //await _hubContext.Clients.Group(notification.ProcessId.ToString())
+        //    .SendAsync("OnFileReady", notification, cancellationToken);
+
+        //// 4. Broadcast to all clients
+        //await _hubContext.Clients.All
+        //    .SendAsync("OnFileReady", notification, cancellationToken);
     }
 
     public async Task NotifyFileFailedAsync(
@@ -57,13 +61,16 @@ public sealed class SignalRReportNotificationService : IReportNotificationServic
                 .SendAsync("OnFileFailed", notification, cancellationToken);
         }
 
-        if (!string.IsNullOrWhiteSpace(target.UserId))
-        {
-            await _hubContext.Clients.User(target.UserId)
-                .SendAsync("OnFileFailed", notification, cancellationToken);
-        }
+        //if (!string.IsNullOrWhiteSpace(target.UserId))
+        //{
+        //    await _hubContext.Clients.User(target.UserId)
+        //        .SendAsync("OnFileFailed", notification, cancellationToken);
+        //}
 
-        await _hubContext.Clients.Group(notification.ProcessId.ToString())
-            .SendAsync("OnFileFailed", notification, cancellationToken);
+        //await _hubContext.Clients.Group(notification.ProcessId.ToString())
+        //    .SendAsync("OnFileFailed", notification, cancellationToken);
+
+        //await _hubContext.Clients.All
+        //    .SendAsync("OnFileFailed", notification, cancellationToken);
     }
 }
