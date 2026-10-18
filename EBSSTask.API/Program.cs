@@ -4,6 +4,7 @@ using EBSSTask.Application;
 using EBSSTask.Application.Common.Options;
 using EBSSTask.Application.Reports.Interfaces;
 using EBSSTask.Infrastructure;
+using EBSSTask.Infrastructure.Persistence;
 using FluentValidation.AspNetCore;
 using QuestPDF.Infrastructure;
 
@@ -49,6 +50,9 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+// Automatically check database connection and apply required schema scripts (tables, stored procedure, index)
+await app.Services.InitializeDatabaseAsync();
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -58,11 +62,16 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// Enable serving Angular SPA from wwwroot
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.UseCors();
 
 app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<ReportHub>(ReportHub.HubUrl);
+app.MapFallbackToFile("index.html");
 
 app.Run();

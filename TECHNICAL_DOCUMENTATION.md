@@ -182,6 +182,31 @@ On individual grid rows and export tables:
 - **Credit Account:**
   $$\text{Row Final Balance} = (\text{PrevBalnce} + \text{Creditor}) - \text{Debtor}$$
 
+### 4.3 Database Index Optimization (`IX_BalanceHistory_Balance_Date`)
+
+To support rapid filtering, pagination, and chronological sorting across large historical ledgers without table scans:
+- **Script File:** [`EBSSTask.Infrastructure/Persistence/Scripts/IX_BalanceHistory_Balance_Date.sql`](./EBSSTask.Infrastructure/Persistence/Scripts/IX_BalanceHistory_Balance_Date.sql)
+- **Definition:**
+  ```sql
+  CREATE NONCLUSTERED INDEX [IX_BalanceHistory_Balance_Date] ON [dbo].[Balance_History]
+  (
+      [Balance_ID] ASC,
+      [Date] ASC,
+      [Balance_His_ID] ASC
+  )
+  INCLUDE([debtor], [creditor], [Prev_Balnce]) ON [PRIMARY];
+  ```
+- **Architectural Benefits:**
+  - **Index Seek:** B-Tree seek on `(Balance_ID, Date)` immediately restricts search space to only matching transactions.
+  - **Deterministic Sort:** Having `Balance_His_ID` in the key ensures immediate retrieval for chronological order without memory sort spills.
+  - **Covering Columns (`INCLUDE`):** Including `debtor`, `creditor`, and `Prev_Balnce` satisfies running balance formulas and summary totals directly from index leaf nodes without key lookups.
+
+### 4.4 File Processing & Export Tracking Table (`dbo.FileProcess`)
+
+Asynchronous background report generation jobs, file system paths, processing states, and user SignalR connection identifiers are stored in `dbo.FileProcess`:
+- **Script File:** [`EBSSTask.Infrastructure/Persistence/Scripts/CreateTable_FileProcess.sql`](./EBSSTask.Infrastructure/Persistence/Scripts/CreateTable_FileProcess.sql)
+- **Schema Details:** Primary Key `Id` (`uniqueidentifier`), `ProcessStatus` (`int`), `ReportType` (`int`), `ReportFormat` (`int`), `Parameters` (`nvarchar(max)`), `CreatedAt`, `StartedAt`, `CompletedAt`, `FilePath`, `UserId`, `ConnectionId`, `ErrorMessage`.
+
 ---
 
 ## 5. Server-Side Filtering & Full-Text Search
@@ -361,6 +386,41 @@ Transactions with rich HTML in the `Remarks` field:
 - Handled safely via DOM sanitization to prevent XSS vulnerabilities.
 - Can be viewed in a dedicated `TransactionDetailsDialogComponent` with raw vs. rendered views.
 
+### 8.6 Infinite Scrolling, Paged Chunks & Low-Memory Data Projection
+To explore full-span transaction ledgers containing tens of thousands of records without memory bloat, a dedicated **Infinite Scrolling Ledger** was engineered:
+
+1. **Paged Chunks Streaming:**
+   - Data is fetched in discrete batches of 50 items (`CHUNK_SIZE = 50`) from `GET /api/BalanceHistories?pageNumber=X&pageSize=50`.
+   - As the user scrolls near the bottom of the current chunk, the next chunk is automatically fetched and appended.
+
+2. **Data Projection (Client-Side Heap Optimization):**
+   - Full DTOs carry over 18 properties (many strings, timestamps, foreign keys). Storing 50,000 full DTOs causes major V8 JavaScript heap pressure.
+   - Incoming DTOs are mapped via `projectBalanceHistoryRow` into `ProjectedBalanceHistoryRow`:
+     ```typescript
+     export interface ProjectedBalanceHistoryRow {
+       id: number;
+       date?: string;
+       orderBill?: string;
+       kind?: string;
+       prev: number;
+       debit: number;
+       credit: number;
+       final: number;
+     }
+     ```
+   - All unused fields (`remarks`, `referenceNo`, `insertDate`, `este7kakDate`, `orgId`, `branchId`, `costCenterId`, `billArrange`, `requestNo`) are discarded, saving **~80% RAM per record**.
+   - If a user clicks to view transaction details, the full record is fetched on demand by ID (`GET /api/BalanceHistories/{id}`).
+
+3. **Angular CDK Virtual Scrolling ($O(1)$ DOM Elements):**
+   - Implemented via `@angular/cdk/scrolling` (`<cdk-virtual-scroll-viewport itemSize="48">`).
+   - Rather than rendering 50,000 `<tr>` elements in the browser DOM (which causes severe jank and browser crashes), the virtual scroll viewport creates only **~25 to 30 DOM elements** at any one time.
+   - As the user scrolls, existing DOM elements are recycled smoothly at 60fps.
+
+### 8.7 Tab State Management & Data Preservation
+- Users can switch seamlessly between **Standard Paginated Grid** and **Full Time-Span (Infinite Scroll)** via top navigation tabs.
+- **In-Memory Data Preservation:** When switching between tabs, already-fetched data is preserved in memory and not re-fetched.
+- **Controlled Invalidation:** Datasets are only cleared and refreshed when the user changes search criteria (e.g., clicking Search, selecting a new date range, or entering a table search term).
+
 ---
 
 ## 9. API Endpoints Reference Table
@@ -383,27 +443,30 @@ Transactions with rich HTML in the `Remarks` field:
 
 ## 10. Execution & Build Instructions
 
-### Backend (.NET 10 Solution)
+### Option A: Unified Run via Visual Studio / IIS Express (Hosted SPA)
+The Angular application is pre-built directly inside `EBSSTask.API/wwwroot` using the development profile (`apiUrl: https://localhost:44323`).
+
+1. Open `EBSSTask.slnx` in **Visual Studio 2022 / 2025**.
+2. Run with the **`IIS Express`** profile (`https://localhost:44323`).
+3. Access `https://localhost:44323/` to view the hosted Angular SPA, API endpoints, and Swagger UI simultaneously.
+
+### Option B: Standalone Angular Dev Server (HMR)
 ```bash
-# Build the entire solution
-dotnet build "EBSSTask.slnx"
+# Terminal 1: Run Backend (.NET 10 API)
+dotnet run --project "EBSSTask.API/EBSSTask.API.csproj" --launch-profile "IIS Express"
 
-# Run the API project
-dotnet run --project "EBSSTask.API/EBSSTask.API.csproj" --launch-profile "https"
+# Terminal 2: Run Frontend (Angular)
+cd EBSS.FrontEnd/ebss-angular
+npm install
+npm start
 ```
+The development server will launch at **`http://localhost:4200`** with Hot Module Replacement (`HMR`).
 
-### Frontend (Angular 19)
+### Rebuilding Angular into `wwwroot`
+To recompile frontend code and deploy fresh bundles directly to the backend's `wwwroot`:
 ```bash
 cd EBSS.FrontEnd/ebss-angular
-
-# Install dependencies (if needed)
-npm install
-
-# Start development server with Hot Module Replacement (HMR)
-npx ng serve -o --hmr
-
-# Build production bundle
-npx ng build --configuration=production
+npm run build:wwwroot
 ```
 
 ### Fallback Client (Simple HTML/JS)
